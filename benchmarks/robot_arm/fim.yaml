@@ -1,25 +1,47 @@
-# FIM config -- robot arm PID controller
-# Requires serial PTY feeder (PyBullet simulator)
+# FIM config - robot arm PID controller (deterministic clock)
+# Requires the serial PTY feeder (PyBullet simulator).
 #
-# MODO: breakpoint en el marcador fim_breakpoint() (config 06, recompile-stable).
-# El benchmark coloca fim_breakpoint() justo antes del calculo del PID (main.c).
-# En modo breakpoint, la campana resuelve ese simbolo automaticamente y para el
-# PC ahi -- no hace falta inject_at_symbol/inject_at_offset.
+# QUE HACE EL BENCHMARK
+#   Un controlador PID en RISC-V mueve un brazo Lite6 (4 articulaciones
+#   activas) desde su pose inicial hasta target_position = [0, 2.8, -0.3, 0].
+#   Converge en 94 ticks de control (1 tick = 1 paso de fisica de 10 ms).
+#   El firmware y el simulador se hablan por UART: el feeder manda las 4
+#   posiciones, el PID responde los 4 pares de torsion.
 #
-# Por que no el histograma de ventana W4: el bucle de espera UART del feeder
-# (uart_getc) ejecuta decenas de miles de veces dentro de [fim_init, fim_exit],
-# y su trip count NO es reproducible run-to-run (depende del timing del feeder).
-# Un sorteo ponderado por trip count cae sobre ese spin, no sobre la matematica
-# de control. El marcador puntual lo evita.
+# POR QUE ESTE MODO (phase-robot-det, cerrado 2026-08)
+#   El instante de inyeccion es la coordenada (instruccion, K-esima pasada),
+#   no un numero de instruccion absoluto. Motivo medido: el firmware espera
+#   la 'K' del feeder girando en el bucle UART, y cuanto gira depende de lo
+#   que tarde Python en arrancar ese dia. La espera previa al handshake vario
+#   560172 instrucciones entre tres ejecuciones identicas, y un mismo icount
+#   fijo cayo en la iteracion 50, en la 4, y despues del final del programa.
+#   Con (PC, K) el resultado es reproducible: cinco campanas completas dieron
+#   resultados identicos byte a byte, trayectorias incluidas.
 #
-# Por que no main+0x96: ese offset de bytes se mueve si se recompila main.c.
-# El simbolo fim_breakpoint sobrevive la recompilacion.
+#   injection_pc_exclude quita del sorteo las 3 instrucciones del spin de
+#   uart_getc: son las UNICAS del programa cuyo numero de ejecuciones depende
+#   del reloj de pared (203631 pasadas frente a 94 del codigo de control), y
+#   sin excluirlas el sorteo ponderado cae casi siempre ahi.
+#
+#   NOTA: la version anterior de este fichero usaba un marcador
+#   fim_breakpoint() dentro del bucle. Aquello fue el apano de pruebas; la
+#   exclusion de PCs es la version sellada por las fases y no necesita tocar
+#   main.c.
 timeout: 120
 
 injection_mode: breakpoint
 
+injection_pc_exclude:
+  # cuerpo del spin RX de uart_getc (lbu / and / beqz)
+  - symbol: uart_getc
+    offset_start: 0x4
+    offset_end: 0xa
+
 observable_outputs:
   comparison: "exact"
+  # fotografia las 4 variables en el instante del disparo -> marker_readback.csv
+  # (testigo independiente de que un replay cae en el mismo instante)
+  record_at_injection: true
   variables:
     - name: "tau"
       type: "float[4]"
@@ -30,12 +52,15 @@ observable_outputs:
     - name: "loop_count"
       type: "int"
 
-# El PID corre en los registros float (la C906 tiene F/D y la ABI es double).
-# La lista de registros enteros por defecto del servidor para --fault register
-# deja ~95% de inyecciones en registros enteros ociosos -> MASKED. Ampliamos
-# a los f-registros donde vive de verdad el calculo del PID.
+# Clasificador post-mortem de trayectorias (lo que pedia el issue #1):
+# a posteriori decide si el brazo LLEGO, se desvio, murio o no convergio.
+# El script viaja con el benchmark en el rsync, por eso {benchmark_dir}.
+hooks:
+  campaign_end: "python3 {benchmark_dir}/classify_trajectories.py {campaign_outdir} --golden {golden_dir}"
+
+# El PID corre en registros float (C906 con F/D, ABI double). La lista por
+# defecto del servidor es solo de enteros -> ~95% MASKED en registros ociosos.
 target_registers:
-  # Integer ABI (control flow, loop counter, addresses)
   - a0
   - a1
   - a2
@@ -49,7 +74,6 @@ target_registers:
   - t0
   - t1
   - t2
-  # Float ABI -- where the PID math actually lives
   - fa0
   - fa1
   - fa2

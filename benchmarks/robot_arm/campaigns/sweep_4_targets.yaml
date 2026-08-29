@@ -1,0 +1,57 @@
+# Barrido de los 4 observables del robot_arm (n=100 cada uno).
+#
+# Un fallo de memoria byte a byte sobre CADA variable observable, para medir
+# que simbolo importa de verdad. Las direcciones son del ELF actual: si se
+# recompila el benchmark hay que recalcularlas con
+#   nm build/robot_arm_riscv64.elf | grep -E 'tau|posicion|target_position|loop_count'
+#
+# memory_access_size: 1 + bit_width: 8 = un solo byte, un solo bit (modelo
+# SEU). El default del framework es 4 bytes: aqui se fija a proposito.
+#
+# El clasificador de trayectorias corre solo al final de cada campana
+# (hooks.campaign_end en el fim.yaml del benchmark) y escribe
+# trajectory_verdicts.csv + trajectory_summary.json en el directorio de
+# resultados.
+defaults:
+  benchmark: robot_arm
+campaigns:
+- name: robot_arm_target_position
+  benchmark: robot_arm
+  fault: memory
+  memory_start: '0x80000460'
+  memory_end: '0x80000470'
+  memory_access_size: 1
+  bit_width: 8
+  num_injections: 100
+  seed: 1234
+  injection_timeout: 60
+- name: robot_arm_posicion
+  benchmark: robot_arm
+  fault: memory
+  memory_start: '0x80000470'
+  memory_end: '0x80000480'
+  memory_access_size: 1
+  bit_width: 8
+  num_injections: 100
+  seed: 1234
+  injection_timeout: 60
+- name: robot_arm_tau
+  benchmark: robot_arm
+  fault: memory
+  memory_start: '0x80000480'
+  memory_end: '0x80000490'
+  memory_access_size: 1
+  bit_width: 8
+  num_injections: 100
+  seed: 1234
+  injection_timeout: 60
+- name: robot_arm_loop_count
+  benchmark: robot_arm
+  fault: memory
+  memory_start: '0x80000490'
+  memory_end: '0x80000494'
+  memory_access_size: 1
+  bit_width: 8
+  num_injections: 100
+  seed: 1234
+  injection_timeout: 60

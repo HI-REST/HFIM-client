@@ -31,6 +31,7 @@ injects faults, and downloads the results, all from one command.
 | [Memory Injection](docs/memory-injection.md) | Address ranges and ELF-section targeting |
 | [Serial Feeder](docs/serial-feeder.md) | External simulators, per-fault trajectory files |
 | [Results](docs/results.md) | Output layout, outcome classes, `download.sh` |
+| [Deterministic Campaigns](docs/deterministic-campaigns.md) | Reproducible timing, witnesses, lifecycle hooks, checkpoints |
 | [Advanced (gem5) Targets](docs/gem5-targets.md) | Cache / DRAM / microarchitecture injection |
 
 ## Key rules (the short version)
@@ -42,6 +43,14 @@ injects faults, and downloads the results, all from one command.
 - **Float-heavy code?** Override `target_registers` to include `fa*`/`fs*`/`ft*`,
   or nearly everything reports MASKED. See
   [Register Injection](docs/register-injection.md).
+- **Benchmark talks to an external simulator?** Use `injection_mode: breakpoint`
+  plus `injection_pc_exclude` on the UART wait loop, or your campaign is not
+  reproducible: absolute instruction counts drift with how fast the host
+  started the simulator. See
+  [Deterministic Campaigns](docs/deterministic-campaigns.md).
+- **Scripts called from hooks/coprocess must live inside the benchmark
+  directory** and be referenced with `{benchmark_dir}`. That directory is what
+  gets uploaded; anything outside it never reaches the server.
 
 ## Outcomes
 

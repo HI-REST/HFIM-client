@@ -60,6 +60,18 @@ variables held **at the instant the fault fired**. Rerunning and getting the
 same file is proof from inside the program that the instant was the same,
 not just a claim from the tool.
 
+**Comparing two runs**: sort before diffing. Under the parallel fleet each
+worker appends its rows when it finishes, so row ORDER reflects which
+injection finished first, not the campaign. The content is what matters:
+
+```bash
+diff <(sort a/marker_readback.csv) <(sort b/marker_readback.csv)   # must be empty
+```
+
+Verified on the server (2026-08-30): two identical n=10 runs produced
+byte-identical `injections.csv` and the same witness rows in a different
+order.
+
 ## Analysing what actually happened: campaign_end hook
 
 The injector's SDC verdict answers "did a variable change". For a robot that

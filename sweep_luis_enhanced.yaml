@@ -1,0 +1,23 @@
+# Mismo benchmark de Luis, metodo determinista. Contrapartida de
+# sweep_luis_replica.yaml: mide cuanto cambian los numeros al arreglar el
+# metodo, y anade el dano fisico real via el clasificador de trayectorias.
+defaults:
+  arch: riscv64
+  seed: 42
+  injections: 1000
+  workers: 8
+  injection_mode: breakpoint
+  fault_model: single_bit_flip
+  benchmark: robot_arm_luis_enhanced
+  memory_access_size: 1
+
+campaigns:
+  - fault: memory
+    target_variable: KD_TORQUE
+  - fault: memory
+    target_variable: KP_TORQUE
+  - fault: memory
+    target_variable: target_position
+  - fault: memory
+    target_variable: posicion
+  - fault: register

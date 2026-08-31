@@ -1,0 +1,28 @@
+# Barrido de los 4 observables del robot_arm en el SERVIDOR (n=100 cada uno).
+#
+# Usa target_variable (nombre del simbolo): el servidor resuelve el rango
+# [addr, addr+size) desde el ELF, asi que sobrevive a recompilaciones. No
+# hace falta poner direcciones a mano.
+#
+# memory_access_size: 1 = un solo byte por inyeccion (modelo SEU). El default
+# del framework es 4; aqui se fija a proposito. bit_width se deriva solo
+# (1 byte -> 8 bits).
+defaults:
+  arch: riscv64
+  seed: 1234
+  injections: 100
+  workers: 1
+  injection_mode: breakpoint
+  fault: memory
+  fault_model: single_bit_flip
+  memory_access_size: 1
+
+campaigns:
+  - benchmark: robot_arm
+    target_variable: target_position
+  - benchmark: robot_arm
+    target_variable: posicion
+  - benchmark: robot_arm
+    target_variable: tau
+  - benchmark: robot_arm
+    target_variable: loop_count

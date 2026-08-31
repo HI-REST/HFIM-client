@@ -107,6 +107,48 @@ would be true and completely misleading.
 ./run.sh --batch benchmarks/robot_arm/campaigns/sweep_4_targets.yaml
 ```
 
+
+## Validation against a prior study (2026-08-30)
+
+The method was checked against Luis's July campaigns on the same server, by
+replaying his own benchmark twice: once with his exact configuration, once
+with the deterministic method. n=1000 per cell.
+
+| Variable | Luis (Jul) | Faithful replica | | Deterministic | |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| | SDC | SDC | harm | SDC | harm |
+| `KD_TORQUE` | 955 | 945 | 64 | 828 | 64 |
+| `KP_TORQUE` | 911 | 930 | 98 | 801 | 103 |
+| `target_position` | 901 | 887 | 205 | 777 | 178 |
+| `posicion` | 838 | 816 | 187 | 221 | 54 |
+| registers | 34 | 24 | 29 | 40 | 28 |
+
+"harm" is the trajectory verdict: arms that ended in the wrong pose,
+deviated, died or never converged.
+
+What it shows:
+
+1. **The replica reproduces his numbers within 2.2%**, so the environment
+   explains none of the differences below.
+2. **A fixed anchor inflates SDC.** His `fim_breakpoint()` marker fires
+   every injection at the same instant, just before the PID computation.
+   Sampling the whole loop instead costs 12-14% of the SDC on the PID
+   constants and 73% on `posicion`.
+3. **Physical harm is robust to the method** (64 vs 64, 98 vs 103, 205 vs
+   178): the extra SDCs the marker counted were corruptions the controller
+   absorbed anyway. `posicion` is the exception (187 vs 54) because it is
+   rewritten every tick, so the marker always caught it at its one
+   vulnerable moment.
+4. **SDC overstates harm by 4x to 13x**, and it reorders priorities. By SDC
+   `KD_TORQUE` looks worst (945); by arms actually broken it is
+   `target_position` (178-205), nearly three times as many. Protecting the
+   setpoint matters more than protecting the gains, and the SDC rate alone
+   points the other way.
+
+Reproduce with `benchmarks/robot_arm_luis_pretmr` (his configuration) and
+`benchmarks/robot_arm_luis_enhanced` (deterministic), driven by
+`sweep_luis_replica.yaml` and `sweep_luis_enhanced.yaml`.
+
 ## Optional: snapshot restore
 
 ```yaml

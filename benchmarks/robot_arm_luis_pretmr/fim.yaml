@@ -1,0 +1,51 @@
+# FIM config -- robot arm PID controller
+# Requires serial PTY feeder (PyBullet simulator)
+#
+# MODO: breakpoint en el marcador fim_breakpoint() (config 06, recompile-stable).
+# El benchmark coloca fim_breakpoint() justo antes del calculo del PID (main.c).
+# En modo breakpoint, la campana resuelve ese simbolo automaticamente y para el
+# PC ahi -- no hace falta inject_at_symbol/inject_at_offset.
+#
+# Por que no el histograma de ventana W4: el bucle de espera UART del feeder
+# (uart_getc) ejecuta decenas de miles de veces dentro de [fim_init, fim_exit],
+# y su trip count NO es reproducible run-to-run (depende del timing del feeder).
+# Un sorteo ponderado por trip count cae sobre ese spin, no sobre la matematica
+# de control. El marcador puntual lo evita.
+#
+# Por que no main+0x96: ese offset de bytes se mueve si se recompila main.c.
+# El simbolo fim_breakpoint sobrevive la recompilacion.
+timeout: 300
+
+injection_mode: breakpoint
+
+target_types: [memory]
+#fault: memory                # On when target_type = register, off otherwise
+#section: .rodata                # Off when target_type = register, On otherwise
+target_variable: "KP_TORQUE"
+memory_access_size: 4           # Off when target_type = register, On otherwise
+fault_model: single_bit_flip
+
+observable_outputs:
+  comparison: "exact"
+  variables:
+    - name: "tau"
+      type: "float[4]"
+    - name: "posicion"
+      type: "float[4]"
+    - name: "target_position"
+      type: "float[4]"
+    - name: "loop_count"
+      type: "int"
+    - name: "KP_TORQUE"
+      type: "float[4]"
+    - name: "KD_TORQUE"
+      type: "float[4]"
+    - name: "KI_TORQUE"
+      type: "float[4]"
+
+#target_registers: auto
+#include_int: true
+#include_float: true
+
+serial_pty: true
+serial_feeder_cmd: "python3 {benchmark_dir}/simulador_enrique/pybullet_feeder.py --pty {pty} --trajectory-log {injection_outdir}/trajectory.csv"

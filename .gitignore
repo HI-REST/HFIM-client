@@ -3,3 +3,5 @@ build/
 *.elf
 *.DS_Store
 config.yaml
+benchmarks/robot_arm_luis_pretmr/simulador_enrique/
+benchmarks/robot_arm_luis_enhanced/simulador_enrique/

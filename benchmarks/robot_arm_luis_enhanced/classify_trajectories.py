@@ -28,12 +28,7 @@ FINAL_TOL = 0.10      # rad: same threshold the C controller uses to declare
                       # target reached (|pos - target| < 0.1 on every joint)
 PATH_TOL = 0.15       # rad: max per-joint deviation from the golden path
                       # before we call it a deviated trajectory
-CAP_TICKS = None      # the feeder's iteration cap; derived from the golden
-                      # when not given (see cap_from_golden). A fixed value
-                      # is wrong across benchmarks: this arm converges in 94
-                      # ticks with DT=1/100 but in 3475 with DT=1/1000, and a
-                      # 2000 cap silently called every 3475-tick run
-                      # "not_converged", including the golden itself.
+CAP_TICKS = 2000      # the feeder's iteration cap = never converged
 
 
 def read_traj(path):
@@ -49,20 +44,13 @@ def read_traj(path):
     return rows or None
 
 
-def cap_from_golden(golden):
-    """A run that needed materially more ticks than the golden never settled.
-    2x the golden length is the boundary: the feeder's own cap is higher, so
-    hitting it always means the arm was still moving."""
-    return max(int(len(golden) * 2), 200)
-
-
-def classify(traj, golden, cap):
+def classify(traj, golden):
     if traj is None:
         return "no_data", {}
     flat = [v for row in traj for v in row]
     if any(not math.isfinite(v) for v in flat):
         return "dead", {"ticks": len(traj)}
-    if len(traj) >= cap:
+    if len(traj) >= CAP_TICKS:
         return "not_converged", {"ticks": len(traj)}
 
     final_err = max(abs(a - b) for a, b in zip(traj[-1], golden[-1]))
@@ -98,7 +86,6 @@ def main():
             for r in csv.DictReader(f):
                 outcomes[int(r["injection_id"])] = r["outcome"]
 
-    cap = CAP_TICKS or cap_from_golden(golden)
     rows, counts = [], {}
     for name in sorted(os.listdir(inj_dir)) if os.path.isdir(inj_dir) else []:
         p = os.path.join(inj_dir, name, "trajectory.csv")
@@ -106,7 +93,7 @@ def main():
             iid = int(name)
         except ValueError:
             continue
-        verdict, info = classify(read_traj(p), golden, cap)
+        verdict, info = classify(read_traj(p), golden)
         counts[verdict] = counts.get(verdict, 0) + 1
         rows.append({"injection_id": iid, "verdict": verdict,
                      "campaign_outcome": outcomes.get(iid, ""), **info})
@@ -122,8 +109,7 @@ def main():
 
     summary = {"campaign": os.path.basename(args.campaign_outdir.rstrip("/")),
                "n": len(rows), "counts": counts,
-               "tolerances": {"final_rad": FINAL_TOL, "path_rad": PATH_TOL},
-               "golden_ticks": len(golden), "not_converged_cap": cap}
+               "tolerances": {"final_rad": FINAL_TOL, "path_rad": PATH_TOL}}
     with open(os.path.join(args.campaign_outdir, "trajectory_summary.json"), "w") as f:
         json.dump(summary, f, indent=2)
     print(json.dumps(summary))

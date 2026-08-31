@@ -61,17 +61,12 @@ float uart_get_float() {
 // CONTROL
 #define NUM_JOINTS 6
 #define NUM_ACTIVE_JOINTS 4
-#define DT (1.0f / 100.0f)
-
-// Ganancias PID
-#define KP             5.0f
-#define KI             2.0f
-#define KD             0.1f
+#define DT (1.0f / 1000.0f)
 
 // Ganancias PID para TORQUE CONTROL
 static const float KP_TORQUE[NUM_ACTIVE_JOINTS] = {5.0f, 3.0f, 0.8f, 1.0f};
-static const float KI_TORQUE[NUM_ACTIVE_JOINTS] = {0.2f, 0.2f, 0.2f, 0.0f};
-static const float KD_TORQUE[NUM_ACTIVE_JOINTS] = {0.55f, 0.5f, 0.2f, 0.0f};
+static const float KI_TORQUE[NUM_ACTIVE_JOINTS] = {2.0f, 2.0f, 2.0f, 0.0f};
+static const float KD_TORQUE[NUM_ACTIVE_JOINTS] = {0.155f, 0.15f, 0.02f, 0.0f};
 
 // Posiciones objetivo
 /* 
@@ -95,6 +90,12 @@ int main() {
     target_position[1] = 2.8f;
     target_position[2] = -0.3f;
     target_position[3] = 0.0f;
+    loop_count = 0;
+    
+    for(int i = 0; i < NUM_ACTIVE_JOINTS; ++i) {
+        posicion[i] = 0.0;
+        tau[i] = 0.0;
+    }
 
     // Esperar ACK inicial de Python
     char ack = uart_getc();
@@ -105,9 +106,8 @@ int main() {
     float integral[NUM_ACTIVE_JOINTS]   = {0};
     float prev_error[NUM_ACTIVE_JOINTS] = {0};
     const int MAX_TAU = 5;
-    int target_alcanzado = 1;
+    int target_alcanzado = 0;
     int movimiento_terminado = 0;
-    loop_count = 0;
 
     fim_init();
 
@@ -116,42 +116,12 @@ int main() {
         for (int i = 0; i < NUM_ACTIVE_JOINTS; i++) {
             posicion[i] = uart_get_float();
         }
-        uart_putc('K');
-        // Punctual injection point: break on the PID compute, not the UART
-        // spin loop. The window histogram weights the feeder spin PC (whose
-        // trip count is not reproducible) far above the control math.
-        //
-        // phase-robot-det (2026-08): el marcador ya no hace falta. La campana
-        // excluye del sorteo el spin de uart_getc via injection_pc_exclude en
-        // fim.yaml, asi que el histograma queda limpio sin tocar main.c. Un
-        // fim_breakpoint() presente TIENE PRIORIDAD sobre ese sorteo (la ruta
-        // rapida del resolver lo prefiere), de modo que dejarlo aqui anulaba
-        // la exclusion y clavaba todas las inyecciones en el marcador.
-        //Cálculo de valor de control
-        for (int i = 0; i < NUM_ACTIVE_JOINTS; i++) {
-            float error      = target_position[i] - posicion[i];
-            integral[i]     += error * DT;
-            float derivative = (error - prev_error[i]) / DT;
-            prev_error[i]    = error;
-            tau[i] = KP_TORQUE[i] * error + KI_TORQUE[i] * integral[i] + KD_TORQUE[i] * derivative;
-            
-            if (tau[i] > MAX_TAU) {
-                tau[i] = MAX_TAU;
-            }
-        }
-    
-        for (int i = 0; i < NUM_ACTIVE_JOINTS; i++) {
-            uart_put_float(tau[i]);
-        }
 
-        loop_count++;
-
-        // Control de fin //
         for (int i = 0; i < NUM_ACTIVE_JOINTS; i++) {
             double diff = posicion[i] - target_position[i];
             if (diff < 0) 
                 diff = -diff;
-            if (diff >= 0.1f) {
+            if (diff >= 0.01f) {
                 target_alcanzado = 0;
                 break;
             }
@@ -164,6 +134,36 @@ int main() {
         } else {
             uart_putc('K');
         }
+        
+        fim_breakpoint();
+        // Cálculo de valor de control por cada articulación activa
+        for (int i = 0; i < NUM_ACTIVE_JOINTS; i++) {
+            // Diferencia entre posición objetivo y posición real
+            float error      = target_position[i] - posicion[i];
+            
+            // Cálculo de la componente integral acumulativa
+            integral[i] += error * DT;
+            
+            // Cálculo del componente derivativo
+            float derivative = (error - prev_error[i]) / DT;
+            
+            // Almacenamos el nuevo error
+            prev_error[i] = error;
+            
+            // Cálculo del valor de control
+            tau[i] = KP_TORQUE[i] * error + KI_TORQUE[i] * integral[i] + KD_TORQUE[i] * derivative;
+            
+            // Comprobación de que el valor de control no supere un máximo de seguridad
+            if (tau[i] > MAX_TAU) {
+                tau[i] = MAX_TAU;
+            }
+        }
+    
+        for (int i = 0; i < NUM_ACTIVE_JOINTS; i++) {
+            uart_put_float(tau[i]);
+        }
+
+        loop_count++;        
 
     } while (!target_alcanzado);
 }

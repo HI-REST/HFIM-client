@@ -1,0 +1,43 @@
+# Benchmark de Luis (pre-TMR) con el METODO DETERMINISTA.
+#
+# Mismo main.c que robot_arm_luis_pretmr (DT=1/1000, sus ganancias, sus
+# variables), pero con el metodo sellado por phase-robot-det:
+#   - el ancla ya no es fim_breakpoint (comentado en main.c) sino el sorteo
+#     sobre el codigo de control con el spin del UART excluido: reproducible
+#     y repartido por todo el bucle, no un unico punto fijo
+#   - testigos en el instante del disparo (marker_readback.csv)
+#   - clasificador de trayectorias al final (dano fisico real, no solo SDC)
+#   - memory_access_size 1 (modelo SEU de una celda) en vez de 4
+timeout: 300
+
+injection_mode: breakpoint
+
+injection_pc_exclude:
+  - symbol: uart_getc
+    offset_start: 0x4
+    offset_end: 0xa
+
+observable_outputs:
+  comparison: "exact"
+  record_at_injection: true
+  variables:
+    - name: "tau"
+      type: "float[4]"
+    - name: "posicion"
+      type: "float[4]"
+    - name: "target_position"
+      type: "float[4]"
+    - name: "loop_count"
+      type: "int"
+    - name: "KP_TORQUE"
+      type: "float[4]"
+    - name: "KD_TORQUE"
+      type: "float[4]"
+    - name: "KI_TORQUE"
+      type: "float[4]"
+
+hooks:
+  campaign_end: "python3 {benchmark_dir}/classify_trajectories.py {campaign_outdir} --golden {golden_dir}"
+
+serial_pty: true
+serial_feeder_cmd: "python3 {benchmark_dir}/simulador_enrique/pybullet_feeder.py --pty {pty} --trajectory-log {injection_outdir}/trajectory.csv"

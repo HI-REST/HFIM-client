@@ -1,0 +1,32 @@
+# Replica FIEL del barrido pre-TMR de Luis (2026-07-01).
+#
+# Mismo main.c (de su source snapshot: DT=1/1000, sus ganancias), su fim.yaml
+# tal cual (ancla en fim_breakpoint, memory_access_size: 4, sin exclusion ni
+# testigos), mismo n=1000. Objetivo: comprobar que reproducimos sus numeros.
+#
+# Sus resultados 2026-07-01 (sin TMR):
+#   KD_TORQUE 955/1000 | KP_TORQUE 911/1000 | target_position 901/1000
+#   posicion 838/1000  | registros 34/1000
+defaults:
+  arch: riscv64
+  seed: 42
+  injections: 1000
+  workers: 8
+  injection_mode: breakpoint
+  fault_model: single_bit_flip
+  benchmark: robot_arm_luis_pretmr
+
+campaigns:
+  - fault: memory
+    target_variable: KD_TORQUE
+    memory_access_size: 4
+  - fault: memory
+    target_variable: KP_TORQUE
+    memory_access_size: 4
+  - fault: memory
+    target_variable: target_position
+    memory_access_size: 4
+  - fault: memory
+    target_variable: posicion
+    memory_access_size: 4
+  - fault: register

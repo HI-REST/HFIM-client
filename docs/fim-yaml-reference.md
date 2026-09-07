@@ -135,10 +135,26 @@ checkpoint_locations:      # function name for the simulator snapshot
   `timeout_factor * golden_execution_time`, floored at 30s. Use only when the
   golden run is deterministic and recorded a golden time.
 
+### Classifying hangs independently of the machine
+
+Both forms above are wall-clock, so on a loaded machine a slow run and a
+hung one look the same, and the same campaign can report different
+timeout counts on different hardware. To cut by work done instead:
+
+```yaml
+hang_icount_factor: 3.0    # stop once the run passes 3x the golden instruction count
+```
+
+An instruction count does not move with host load, so the verdict is the
+same on a busy laptop and an idle server, and comparable across
+simulators. On QEMU this needs `injection_mode: icount`, since the
+counting plugin is only loaded for that clock; on gem5 it becomes
+`--max-insts` natively. Left unset, only `timeout` bounds the run.
+
 ## Injection timing + window
 
 ```yaml
-injection_mode: breakpoint   # breakpoint | timer | icount | stepi (default: timer)
+injection_mode: icount       # icount | breakpoint | timer | stepi (default: icount)
 ```
 
 For random campaigns the fault's location is drawn from the
@@ -146,13 +162,18 @@ For random campaigns the fault's location is drawn from the
 around the code under test. There is no separate window field: instrument the
 benchmark, and the window follows.
 
-- `breakpoint` (recommended, feeder-robust): a GDB breakpoint at the drawn PC.
-  The CPU stops exactly when it executes that instruction. Reliable for
-  serial-feeder benchmarks where instruction counts drift with feeder wall-time.
-- `timer` (default): continue for a scaled duration, then interrupt. Fast but
-  imprecise about which instruction is hit.
-- `icount`: a TCG plugin pauses at the Nth committed instruction. Deterministic,
-  but fragile for feeder benchmarks (the count moves with feeder timing).
+- `icount` (default): a TCG plugin pauses at the Nth committed instruction.
+  An instruction count names the same instant on every run and every machine,
+  which is what makes a campaign replayable. It reads the counts the golden
+  run recorded, and refuses rather than quietly switching clock when they are
+  absent. Fragile for feeder benchmarks, where the count moves with feeder
+  wall-time.
+- `breakpoint` (feeder-robust): a GDB breakpoint at the drawn PC. The CPU
+  stops exactly when it executes that instruction. This is the right clock
+  for a serial-feeder benchmark, whose instruction counts drift.
+- `timer`: continue for a scaled duration, then interrupt. Fast, imprecise
+  about which instruction is hit, and NOT replayable: it names whatever the
+  host was doing, so the same seed can inject at different points.
 - `stepi`: single-step to the target. Deterministic but slow over the network.
 
 ### Hit-instance (loop-iteration spread)
@@ -171,14 +192,27 @@ GDB ignore-count of `K`, so it fires on the `(K+1)`th hit.
   (`hit_instance` column) so a campaign replays deterministically. Old
   faultlists with no such column load as `K=0`.
 
-## Serial feeder (external simulator)
+## type: is now optional
 
 ```yaml
-serial_pty: true
-serial_feeder_cmd: "python3 {benchmark_dir}/feeder.py --pty {pty} --trajectory-log {injection_outdir}/trajectory.csv"
+observable_outputs:
+  variables:
+    - name: "tau"              # no type: needed
+    - name: "result"
+      type: "float[4]"         # still allowed, and now a CONTRACT
 ```
 
-Placeholders and per-fault output files: [Serial Feeder](serial-feeder.md).
+- **Default when omitted**: size comes from the ELF symbol table, and the
+  type for reporting comes from DWARF debug info if the binary has it
+  (benchmarks built by the FIM SDK always do). Without DWARF the value is
+  reported as hex.
+- The SDC verdict is a **byte comparison** either way, so an untyped
+  observable is never less correct - only less readable.
+- Declaring a type buys you a contract: if the declared size does not match
+  what the ELF says, the campaign aborts at setup instead of misreading
+  memory. Useful to catch a stale config after editing the benchmark.
+- Tolerance comparison still requires a type (bytes cannot express an
+  epsilon).
 
 ## Result saving
 
@@ -191,6 +225,31 @@ results:
   cleanup_injections: false    # delete injections/ after the campaign
 ```
 
+
+---
+
+# Special cases
+
+Nothing below is needed for an ordinary campaign. Each section answers a
+situation most benchmarks never meet, and a first read can stop here and
+skip to [defaults at a glance](#defaults-at-a-glance).
+
+| If your benchmark | Read |
+| --- | --- |
+| talks to an external simulator over a serial port | [serial feeder](#serial-feeder-external-simulator) |
+| needs the same instant on every replay, feeder and all | [deterministic injection timing](#deterministic-injection-timing-recommended-for-feeder-benchmarks) |
+| should record what it held when the fault landed | [record_at_injection](#record_at_injection-witnesses) |
+| needs setup or teardown around each injection | [campaign lifecycle](#campaign-lifecycle-hooks-and-coprocess) |
+| should restart from a snapshot instead of from boot | [checkpoint](#checkpoint-snapshot-restore) |
+
+## Serial feeder (external simulator)
+
+```yaml
+serial_pty: true
+serial_feeder_cmd: "python3 {benchmark_dir}/feeder.py --pty {pty} --trajectory-log {injection_outdir}/trajectory.csv"
+```
+
+Placeholders and per-fault output files: [Serial Feeder](serial-feeder.md).
 
 ## Deterministic injection timing (recommended for feeder benchmarks)
 
@@ -246,8 +305,14 @@ hit count; you do not set it by hand.
 
 ## record_at_injection (witnesses)
 
-Photographs the observable variables **at the moment the fault fires**, on
-top of the end-of-run comparison that decides SDC.
+Photographs the observable variables at the injection stop, **before the
+fault is applied**, on top of the end-of-run comparison that decides SDC.
+
+So a witness records what the program was holding when the fault landed,
+not the corrupted value. Reading a witness as "the value after the flip"
+is the usual mistake: to see the damage, compare the end-of-run
+observables, which is what the SDC verdict already does. Capturing both
+sides of the injection is not available.
 
 ```yaml
 observable_outputs:
@@ -280,28 +345,6 @@ observable_outputs:
 - Why it matters: it is the independent proof that a rerun hit the same
   instant. The program's own counter (e.g. `loop_count`) says which
   iteration it was in when the fault landed.
-
-## type: is now optional
-
-```yaml
-observable_outputs:
-  variables:
-    - name: "tau"              # no type: needed
-    - name: "result"
-      type: "float[4]"         # still allowed, and now a CONTRACT
-```
-
-- **Default when omitted**: size comes from the ELF symbol table, and the
-  type for reporting comes from DWARF debug info if the binary has it
-  (benchmarks built by the FIM SDK always do). Without DWARF the value is
-  reported as hex.
-- The SDC verdict is a **byte comparison** either way, so an untyped
-  observable is never less correct - only less readable.
-- Declaring a type buys you a contract: if the declared size does not match
-  what the ELF says, the campaign aborts at setup instead of misreading
-  memory. Useful to catch a stale config after editing the benchmark.
-- Tolerance comparison still requires a type (bytes cannot express an
-  epsilon).
 
 ## Campaign lifecycle: hooks and coprocess
 
@@ -355,6 +398,20 @@ coprocess:
 
 Restores the guest from a snapshot taken during the golden run instead of
 booting it for every injection.
+
+The anchor is **where the snapshot is taken**, not where the fault lands.
+`fim_init` is the usual choice because it sits after the guest has booted
+and initialised but before the code under test runs: everything earlier is
+identical in every injection and worth skipping, everything later is what
+the campaign is measuring and must still execute. The fault is still drawn
+from the injection window as usual.
+
+This is why `icount` is rejected. The instruction counter runs in the
+QEMU process, while a restore rewinds the machine underneath it, so after
+`loadvm` the count and the guest no longer describe the same run: a
+number taken before the restore does not name an instant inside it.
+A program counter survives a restore, which is what makes `breakpoint`
+the clock a checkpoint pairs with.
 
 ```yaml
 checkpoint:
@@ -410,7 +467,7 @@ What happens when you write nothing. Every row is the behaviour of a
 | --- | --- | --- |
 | `fault` | `register` | |
 | `fault_model` | `single_bit_flip` | |
-| `injection_mode` | `timer` | `breakpoint` is what the deterministic clock needs |
+| `injection_mode` | `icount` | replayable; `breakpoint` for feeder benchmarks whose counts drift |
 | `memory_access_size` | `4` | bytes read-modify-written per memory injection. Use `1` to model a single-cell upset |
 | `bit_width` | derived from the target | memory: `memory_access_size * 8`; registers: `64`. Setting it wider than the access aborts at setup |
 | `seed` | `42` | `run.sh --seed N` overrides |
@@ -421,6 +478,7 @@ What happens when you write nothing. Every row is the behaviour of a
 | `injection_pc_exclude` | absent | the PC draw is unchanged |
 | `hooks` / `coprocess` | absent | nothing is spawned |
 | `checkpoint` | absent | fresh QEMU per injection |
+| `hang_icount_factor` | absent | only `timeout` bounds a run; set it to cut by instructions instead |
 | `hook_timeout` | `60` s | per hook |
 | `ready_timeout` | `120` s | coprocess READY wait |
 

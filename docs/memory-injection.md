@@ -63,6 +63,18 @@ pointer instead of `__stack_bottom`). Two resolution paths:
   golden run's recorded SP envelope (min/initial). The golden run must record it;
   if it has not, FIM errors and asks you to regenerate the golden.
 
+The difference matters when you compare campaigns. Breakpoint mode gives a
+window per injection: the frame as it stood at that stop. icount/timer gives
+one window for the **whole program**: the deepest `sp` the golden run ever
+reached, so the region covers every frame the benchmark establishes anywhere
+in its execution. Pick the second when you want a stack SDC rate for the
+program rather than for one moment in it.
+
+The whole-program bound is a sampled minimum: the golden trace records `sp`
+every few thousand instructions rather than per instruction, so the deepest
+point can sit slightly above the true one. The window is at worst a little
+narrow at its deepest, never missing the bulk of the live region.
+
 Use `.stack-live` when you want the stack SDC rate of the bytes in use; use
 `.stack` only when you specifically want the whole-reservation baseline.
 

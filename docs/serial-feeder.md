@@ -1,5 +1,10 @@
 # Serial Feeder (External Simulator)
 
+> **Retired.** HFIM-client is replaced by `hfim run --on <server>` from hfim-core
+> (phase R-4). Its scripts print the hfim command that replaces them and exit 2.
+> Set up a Server and run a campaign there: hfim-docs, `guides/run-on-a-server.md`.
+> The table of every old command and its replacement is in that guide.
+
 Some benchmarks exchange data over UART with a host-side process (e.g. a robot
 controller reading joint positions from a physics simulator). FIM launches that
 "feeder" alongside the simulator and wires them together over a PTY.

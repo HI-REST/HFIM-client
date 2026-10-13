@@ -1,5 +1,10 @@
 # Memory Injection
 
+> **Retired.** HFIM-client is replaced by `hfim run --on <server>` from hfim-core
+> (phase R-4). Its scripts print the hfim command that replaces them and exit 2.
+> Set up a Server and run a campaign there: hfim-docs, `guides/run-on-a-server.md`.
+> The table of every old command and its replacement is in that guide.
+
 Memory injection flips a bit in a byte of program memory during the fault
 window, instead of in a register. Select it with `fault: memory` in `fim.yaml`
 (or `--fault memory` on the command line).

@@ -1,5 +1,10 @@
 # Running Campaigns
 
+> **Retired.** HFIM-client is replaced by `hfim run --on <server>` from hfim-core
+> (phase R-4). Its scripts print the hfim command that replaces them and exit 2.
+> Set up a Server and run a campaign there: hfim-docs, `guides/run-on-a-server.md`.
+> The table of every old command and its replacement is in that guide.
+
 `run.sh` does the whole pipeline in one command: upload the benchmark, build
 it, run the golden reference, run the fault-injection campaign, then download
 the results to your machine.

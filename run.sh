@@ -16,6 +16,41 @@
 # Use --follow to stream live output and download when it finishes.
 #
 set -euo pipefail
+
+# RETIRED (hfim-core phase R-4). HFIM-client no longer submits campaigns;
+# hfim does, from the campaign repository, with `hfim run --on <server>`.
+# This script prints the command that replaces it and exits 2. The code
+# below is kept for reference until the repository is archived.
+_retired() {
+    local with="hfim run --on <server> campaigns/<campaign>.yaml"
+    case " $* " in
+        *" --batch "*) with="hfim run --on <server> <batch>.yaml" ;;
+    esac
+    {
+        echo "run.sh is retired. Run this in your campaign repository instead:"
+        echo "  $with"
+        echo ""
+        echo "Every HFIM-client command and its replacement:"
+        echo "  ./run.sh benchmarks/<b> [flags]  ->  hfim run --on <server> campaigns/<campaign>.yaml"
+        echo "  ./run.sh --batch <file>          ->  hfim run --on <server> <batch>.yaml"
+        echo "  ./run.sh ... --follow            ->  hfim run --on <server> ... (follows by default; --detach returns)"
+        echo "  ./status.sh [--watch|--tail N]   ->  hfim runs, hfim runs show <id>, hfim runs attach <id>"
+        echo "  ./download.sh <id>|--latest      ->  hfim runs fetch <id> | hfim runs fetch --latest"
+        echo "  ./download.sh <id> --purge       ->  hfim runs clean <id>   (after the fetch)"
+        echo "  ./download.sh --list-golden      ->  hfim golden list --on <server>"
+        echo "  ./download.sh --golden ...       ->  none: a Golden stays with the simulator that measured it"
+        echo "  ./build.sh benchmarks/<b>        ->  hfim build benchmarks/<b>   (or --on <server>)"
+        echo "  config.yaml user/server/ssh_key  ->  hfim remote add <server> ... (once, in ~/.hfim/servers.yaml)"
+        echo "  config.yaml telegram             ->  hfim remote notify <server> --telegram --chat-id <chat id>"
+        echo ""
+        echo "Flags that built a campaign on the server (-n, --fault, --seed, --arch, --label) have no"
+        echo "replacement on purpose: write them into the campaign file."
+        echo "Install hfim and set up a Server: https://github.com/HI-REST/hfim-docs (guides/run-on-a-server.md)."
+        echo "Your old results stay readable on the server; this repository is no longer maintained."
+    } >&2
+    exit 2
+}
+_retired "$@"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
 # Parse config
